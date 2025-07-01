@@ -1,0 +1,445 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Калькулятор сонячної енергії 🌞</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Manrope', sans-serif; }
+    .fade-in { animation: fadeIn 0.5s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 50; }
+    .modal-content { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn { from { transform: translateY(-50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    button:hover { transform: scale(1.05); transition: transform 0.2s; }
+    #pieChart { width: 200px !important; height: 200px !important; margin: 0 auto; }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-blue-100 to-green-100 min-h-screen">
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-6xl">
+    <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-center text-blue-700 mb-8 flex items-center justify-center">
+      <span class="mr-2">🌞</span> Калькулятор сонячної енергії
+    </h1>
+
+    <!-- Main Form -->
+    <form id="solarForm" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8" novalidate>
+      <!-- Parameters -->
+      <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg border border-gray-100">
+        <h2 class="text-xl md:text-2xl font-semibold text-gray-800 mb-6 text-center">Основні параметри 🌞</h2>
+        <div class="space-y-5">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Тип об’єкта</label>
+            <select name="entry.1829919613" id="objectType" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white" required>
+              <option value="" disabled selected>Виберіть тип</option>
+              <option value="Приватний">Приватний</option>
+              <option value="Бізнес">Бізнес</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Тип станції</label>
+            <select name="entry.1944894407" id="stationType" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white" required>
+              <option value="" disabled selected>Виберіть тип</option>
+              <option value="Мережева">Мережева</option>
+              <option value="Гібридна">Гібридна</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Регіон</label>
+            <input type="text" name="entry.1121418168" id="region" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Напр., Київ" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Бажана потужність (кВт)</label>
+            <input type="number" name="entry.1606862016" id="powerCapacity" min="0" step="0.1" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Напр., 10" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Зелений тариф</label>
+            <select name="entry.92562261" id="greenTariff" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white" required>
+              <option value="" disabled selected>Виберіть опцію</option>
+              <option value="Так">Так</option>
+              <option value="Ні">Ні</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monthly Consumption -->
+      <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg border border-gray-100">
+        <h2 class="text-xl md:text-2xl font-semibold text-gray-800 mb-6 text-center">Помісячне споживання (кВт·год) 📊</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Січень</label>
+            <input type="number" name="entry.1033290843" id="month1" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Липень</label>
+            <input type="number" name="entry.1903782856" id="month7" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Лютий</label>
+            <input type="number" name="entry.1549952799" id="month2" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Серпень</label>
+            <input type="number" name="entry.793389669" id="month8" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Березень</label>
+            <input type="number" name="entry.390156925" id="month3" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Вересень</label>
+            <input type="number" name="entry.530840690" id="month9" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Квітень</label>
+            <input type="number" name="entry.2077577077" id="month4" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Жовтень</label>
+            <input type="number" name="entry.76616870" id="month10" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Травень</label>
+            <input type="number" name="entry.906592707" id="month5" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Листопад</label>
+            <input type="number" name="entry.462924891" id="month11" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Червень</label>
+            <input type="number" name="entry.1387023304" id="month6" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700">Грудень</label>
+            <input type="number" name="entry.2129476631" id="month12" min="0" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Button -->
+      <button type="button" id="openContact" class="col-span-2 mt-6 w-full bg-blue-500 text-white p-4 rounded-lg hover:bg-blue-600 transition-colors text-lg font-semibold flex items-center justify-center">
+        Розрахувати <span class="ml-2">🌞</span>
+      </button>
+    </form>
+
+    <!-- Results Section -->
+    <div id="results" class="bg-white p-6 md:p-8 rounded-xl shadow-lg border border-gray-100 mb-8 fade-in hidden">
+      <h2 class="text-xl md:text-2xl font-semibold text-gray-800 mb-6 text-center">Результати розрахунків 📊</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div class="bg-blue-50 p-4 rounded-lg text-center">
+          <p class="text-sm font-medium text-gray-700">Річний виробіток (кВт·год)</p>
+          <p id="annualGeneration" class="text-xl font-bold text-blue-600">--</p>
+        </div>
+        <div class="bg-green-50 p-4 rounded-lg text-center">
+          <p class="text-sm font-medium text-gray-700">Економія (грн)</p>
+          <p id="savings" class="text-xl font-bold text-green-600">--</p>
+        </div>
+        <div class="bg-yellow-50 p-4 rounded-lg text-center">
+          <p class="text-sm font-medium text-gray-700">Прибуток (грн)</p>
+          <p id="profit" class="text-xl font-bold text-yellow-600">--</p>
+        </div>
+      </div>
+      <p id="taxInfo" class="text-sm text-gray-600 mb-6 text-center hidden">З прибутку сплачують податки: ПДФО = 18% та військовий збір = 5%</p>
+
+      <!-- Charts -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h3 class="text-lg md:text-xl font-semibold text-gray-800 mb-4 text-center">Помісячне порівняння (кВт·год)</h3>
+          <canvas id="barChart" class="w-full max-w-full mx-auto"></canvas>
+          <p class="text-sm text-gray-600 mt-3 text-center">Стовпчаста діаграма порівнює помісячну генерацію та споживання.</p>
+        </div>
+        <div class="flex flex-col items-center">
+          <h3 class="text-lg md:text-xl font-semibold text-gray-800 mb-4 text-center">Розподіл енергії (%)</h3>
+          <canvas id="pieChart" class="w-full max-w-xs mx-auto"></canvas>
+          <p class="text-sm text-gray-600 mt-3 text-center">Кругова діаграма показує співвідношення власного споживання та видачі в мережу.</p>
+        </div>
+      </div>
+
+      <div class="mt-6 text-center">
+        <p class="text-sm font-medium text-gray-700">Співвідношення власного споживання</p>
+        <p id="consumptionRatio" class="text-xl font-bold text-blue-600">--</p>
+      </div>
+      <p class="text-sm text-gray-600 mt-4 text-center">Це є приблизні розрахункові значення, все залежить від кутів нахилу, хмарності та розташування і т.д. 🌞</p>
+    </div>
+
+    <!-- Contact Modal -->
+    <div id="contactModal" class="modal items-center justify-center px-4 sm:px-0">
+      <div class="modal-content bg-white p-4 sm:p-6 md:p-8 rounded-xl shadow-lg border border-gray-100 w-full max-w-md mx-auto">
+        <h2 class="text-xl md:text-2xl font-semibold text-gray-800 mb-6 text-center">Контактні дані 📞</h2>
+        <form id="contactForm" novalidate>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Ім’я</label>
+              <input type="text" name="entry.797046125" id="firstName" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Введіть ім’я" required>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Номер телефону</label>
+              <input type="tel" name="entry.550678584" id="phone" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Напр., +380123456789" required>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Чи ви є клієнтом компанії?</label>
+              <select name="entry.704844127" id="isClient" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white" required>
+                <option value="" disabled selected>Виберіть опцію</option>
+                <option value="Так">Так</option>
+                <option value="Ні">Ні</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Чи з вами можна зв’язатись?</label>
+              <select name="entry.580596646" id="contactRequest" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white" required>
+                <option value="" disabled selected>Виберіть опцію</option>
+                <option value="Так">Так</option>
+                <option value="Ні">Ні</option>
+              </select>
+            </div>
+          </div>
+          <button type="button" id="submitAll" class="mt-6 w-full bg-blue-500 text-white p-4 rounded-lg hover:bg-blue-600 transition-colors text-lg font-semibold flex items-center justify-center">
+            Надіслати <span class="ml-2">✅</span>
+          </button>
+          <button type="button" id="closeModal" class="mt-4 w-full bg-gray-200 text-gray-700 p-4 rounded-lg hover:bg-gray-300 transition-colors text-lg font-semibold">Закрити</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Confirmation Message -->
+    
+    
+    <div id="confirmation" class="hidden mt-6 p-6 bg-green-100 text-green-800 rounded-lg shadow-lg text-center whitespace-nowrap overflow-auto">
+      ✅ Дякуємо, <span id="confName" class="font-bold"></span>! Ми зв’яжемося з вами за номером <span id="confPhone" class="font-bold"></span> ☎️
+    </div>
+    
+    
+
+    <script>
+      // Monthly generation per 1 kW (kWh)
+      const monthlyGenerationPerKW = [41.74, 53.67, 95.43, 143.36, 145.98, 157.96, 157.96, 154.97, 130.85, 65.61, 47.63, 35.83];
+
+      // Initialize Charts
+      const barCtx = document.getElementById('barChart').getContext('2d');
+      const barChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: ['Січ', 'Лют', 'Бер', 'Кві', 'Тра', 'Чер', 'Лип', 'Сер', 'Вер', 'Жов', 'Лис', 'Гру'],
+          datasets: [
+            {
+              label: 'Генерація (кВт·год)',
+              data: Array(12).fill(0),
+              backgroundColor: '#2ecc71',
+              borderColor: '#27ae60',
+              borderWidth: 1
+            },
+            {
+              label: 'Споживання (кВт·год)',
+              data: Array(12).fill(0),
+              backgroundColor: '#e74c3c',
+              borderColor: '#c0392b',
+              borderWidth: 1
+            }
+          ]
+        },
+        options: {
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'кВт·год', font: { size: 14 } } },
+            x: { title: { display: true, text: 'Місяць', font: { size: 14 } } }
+          },
+          plugins: { legend: { position: 'top', labels: { font: { size: 12 } } } },
+          animation: { duration: 1000 }
+        }
+      });
+
+      const pieCtx = document.getElementById('pieChart').getContext('2d');
+      const pieChart = new Chart(pieCtx, {
+        type: 'pie',
+        data: {
+          labels: ['Власне споживання', 'Видача в мережу'],
+          datasets: [{
+            data: [0, 0],
+            backgroundColor: ['#1e90ff', '#2ecc71'],
+            borderColor: ['#1e90ff', '#27ae60'],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          plugins: {
+            legend: { position: 'bottom', labels: { font: { size: 12 } } },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const label = ctx.label;
+                  const value = ctx.raw;
+                  const total = ctx.dataset.data.reduce((sum, val) => sum + val, 0);
+                  const kWh = (value / 100) * total * (ctx.chart.annualGeneration || 0);
+                  return `${label}: ${value.toFixed(2)}% (${kWh.toFixed(2)} кВт·год)`;
+                }
+              }
+            }
+          },
+          animation: { duration: 1000 },
+          hoverOffset: 20
+        }
+      });
+
+      // Open Contact Modal on Calculate Button Click
+      document.getElementById('openContact').addEventListener('click', (e) => {
+        e.preventDefault();
+
+        // Collect Form Data
+        const objectType = document.getElementById('objectType').value;
+        const stationType = document.getElementById('stationType').value;
+        const region = document.getElementById('region').value;
+        const powerCapacity = parseFloat(document.getElementById('powerCapacity').value);
+        const greenTariff = document.getElementById('greenTariff').value === 'Так';
+
+        // Monthly Consumption (non-mandatory)
+        const months = Array.from({length: 12}, (_, i) => parseFloat(document.getElementById(`month${i+1}`).value) || 0);
+        const annualConsumption = months.reduce((sum, val) => sum + val, 0);
+
+        // Validation for fields
+        
+const form = document.getElementById('solarForm');
+if (!form.checkValidity()) {
+  form.reportValidity(); // показує вбудовані повідомлення типу "Заповніть це поле"
+  return;
+}
+
+
+        // Calculations
+        const monthlyGeneration = monthlyGenerationPerKW.map(val => val * powerCapacity);
+        const annualGeneration = monthlyGeneration.reduce((sum, val) => sum + val, 0);
+        const electricityRate = objectType === 'Приватний' ? 4.32 : 8.96;
+        const selfConsumption = Math.min(annualGeneration, annualConsumption);
+        const excessGeneration = Math.max(0, annualGeneration - selfConsumption);
+        const savings = selfConsumption * electricityRate;
+        let profit = 0;
+        if (excessGeneration > 0 && greenTariff) {
+          const euroRate = 45; // Assumed EUR to UAH rate
+          profit = ((excessGeneration * 0.16) * euroRate) * (1 - 0.23); // Deduct 23% taxes
+        }
+        const consumptionRatio = annualGeneration > 0 ? (selfConsumption / annualGeneration * 100).toFixed(0) : 0;
+        const gridFeedPercentage = annualGeneration > 0 ? (excessGeneration / annualGeneration * 100).toFixed(2) : 0;
+        const selfConsumptionPercentage = annualGeneration > 0 ? (selfConsumption / annualGeneration * 100).toFixed(2) : 0;
+
+        // Update Results
+        document.getElementById('annualGeneration').textContent = annualGeneration.toFixed(2);
+        document.getElementById('savings').textContent = savings.toFixed(2);
+        document.getElementById('profit').textContent = profit.toFixed(2);
+        document.getElementById('consumptionRatio').textContent = consumptionRatio + '%';
+        document.getElementById('taxInfo').classList.toggle('hidden', profit === 0);
+        document.getElementById('results').classList.remove('hidden');
+
+        // Store annualGeneration for pie chart tooltip
+        pieChart.annualGeneration = annualGeneration;
+
+        // Update Bar Chart
+        barChart.data.datasets[0].data = monthlyGeneration;
+        barChart.data.datasets[1].data = months;
+        barChart.update();
+
+        // Update Pie Chart
+        pieChart.data.datasets[0].data = [selfConsumptionPercentage, gridFeedPercentage];
+        pieChart.update();
+
+        // Show Contact Modal
+        document.getElementById('contactModal').style.display = 'flex';
+      });
+
+      // Submit All Data on Send Button Click
+      document.getElementById('submitAll').addEventListener('click', (e) => {
+        e.preventDefault();
+
+        // Collect Contact Form Data
+        const firstName = document.getElementById('firstName').value;
+        const phone = document.getElementById('phone').value;
+        const isClient = document.getElementById('isClient').value;
+        const contactRequest = document.getElementById('contactRequest').value;
+
+        // Validation for contact form
+        if (!firstName || !phone || !isClient || !contactRequest) {
+          alert('Будь ласка, заповніть усі поля контактної форми.');
+          return;
+        }
+
+        // Collect All Form Data
+        const solarFormData = new FormData(document.getElementById('solarForm'));
+        const contactFormData = new FormData(document.getElementById('contactForm'));
+
+        // Combine data from both forms
+        const combinedFormData = new FormData();
+        for (let [key, value] of solarFormData.entries()) {
+          combinedFormData.append(key, value);
+        }
+        for (let [key, value] of contactFormData.entries()) {
+          combinedFormData.append(key, value);
+        }
+
+        // Send Data to Google Forms
+        fetch('https://docs.google.com/forms/u/1/d/e/1FAIpQLSd0UfQ7yNyOaT8SavTybxksGA9aYUGM8vyg4cw4V9fODwh8Mw/formResponse', {
+          method: 'POST',
+          body: combinedFormData,
+          mode: 'no-cors'
+        }).then(() => {
+          
+    document.getElementById('confName').textContent = firstName;
+    document.getElementById('confPhone').textContent = phone;
+    document.getElementById('confirmation').classList.remove('hidden');
+    
+          document.getElementById('contactModal').style.display = 'none';
+          document.getElementById('solarForm').reset();
+          document.getElementById('contactForm').reset();
+          
+        }).catch(error => {
+          console.error('Помилка при відправленні:', error);
+          alert('Сталася помилка при відправленні даних. Спробуйте ще раз.');
+        });
+      });
+
+      // Close Modal
+      document.getElementById('closeModal').addEventListener('click', () => {
+        document.getElementById('contactModal').style.display = 'none';
+      });
+    </script>
+</body>
+</html>
